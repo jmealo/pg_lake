@@ -257,6 +257,33 @@ FinishStageRestCatalogIcebergTableCreateRestRequest(Oid relationId, DataFileSche
 
 	appendJsonKey(body, "updates");
 	appendStringInfoChar(body, '[');	/* start updates array */
+
+	/*
+	 * Assign the table UUID in the create commit, as the Java client does.
+	 * Some catalogs (e.g. Nessie) reject a create without it.
+	 */
+	{
+		uint8		uuidBytes[16];
+		char		uuidString[37];
+
+		if (!pg_strong_random(uuidBytes, sizeof(uuidBytes)))
+			ereport(ERROR, (errmsg("could not generate random table UUID")));
+		uuidBytes[6] = (uuidBytes[6] & 0x0f) | 0x40;
+		uuidBytes[8] = (uuidBytes[8] & 0x3f) | 0x80;
+		snprintf(uuidString, sizeof(uuidString),
+				 "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+				 uuidBytes[0], uuidBytes[1], uuidBytes[2], uuidBytes[3],
+				 uuidBytes[4], uuidBytes[5], uuidBytes[6], uuidBytes[7],
+				 uuidBytes[8], uuidBytes[9], uuidBytes[10], uuidBytes[11],
+				 uuidBytes[12], uuidBytes[13], uuidBytes[14], uuidBytes[15]);
+
+		appendStringInfoChar(body, '{');
+		appendJsonString(body, "action", "assign-uuid");
+		appendStringInfoChar(body, ',');
+		appendJsonString(body, "uuid", uuidString);
+		appendStringInfoString(body, "},");
+	}
+
 	appendStringInfoChar(body, '{');	/* start updates element */
 
 	appendJsonString(body, "action", "add-schema");
