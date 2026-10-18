@@ -2062,7 +2062,7 @@ def test_drop_server_blocks_on_active_query(
         dropper_conn.close()
 
 
-def test_reject_writable_table_on_server_with_catalog_name(
+def test_writable_table_on_server_with_catalog_name(
     installcheck,
     superuser_conn,
     pg_conn,
@@ -2073,9 +2073,8 @@ def test_reject_writable_table_on_server_with_catalog_name(
     create_http_helper_functions,
 ):
     """
-    Creating a writable table on a server that has catalog_name set must
-    be rejected, because writable tables always derive the catalog name
-    from the database name.
+    A writable table on a server with catalog_name is created in that
+    catalog, keeps it as a table option, and cannot change it.
     """
     if installcheck:
         return
@@ -2111,8 +2110,8 @@ def test_reject_writable_table_on_server_with_catalog_name(
     )
     superuser_conn.commit()
 
-    # Own the schema with pg_conn so the CREATE TABLE below reaches the
-    # catalog_name rejection rather than tripping a permission check. Drop any
+    # Own the schema with pg_conn so the CREATE TABLE below does not trip
+    # a permission check. Drop any
     # leftover first (as superuser, so it works regardless of who leaked it):
     # this test shares TABLE_NAMESPACE with the other writable-REST tests, and
     # they may land in the same pytest-split group in any order.
@@ -2121,17 +2120,34 @@ def test_reject_writable_table_on_server_with_catalog_name(
     run_command(f"CREATE SCHEMA {SCHEMA_NAME}", pg_conn)
     pg_conn.commit()
 
-    err = run_command(
-        f"CREATE TABLE {SCHEMA_NAME}.reject_catname (id bigint) "
+    run_command(
+        f"CREATE TABLE {SCHEMA_NAME}.with_catname (id bigint) "
         f"USING iceberg WITH (catalog='{SERVER_NAME}')",
+        pg_conn,
+    )
+    run_command(
+        f"INSERT INTO {SCHEMA_NAME}.with_catname SELECT generate_series(1, 10)",
+        pg_conn,
+    )
+    pg_conn.commit()
+
+    result = run_query(f"SELECT count(*) FROM {SCHEMA_NAME}.with_catname", pg_conn)
+    assert result[0][0] == 10
+
+    result = run_query(
+        f"SELECT ftoptions FROM pg_foreign_table "
+        f"WHERE ftrelid = '{SCHEMA_NAME}.with_catname'::regclass",
+        pg_conn,
+    )
+    assert f"catalog_name={server_params.PG_DATABASE}" in result[0][0]
+
+    err = run_command(
+        f"ALTER FOREIGN TABLE {SCHEMA_NAME}.with_catname "
+        f"OPTIONS (SET catalog_name 'other')",
         pg_conn,
         raise_error=False,
     )
-    assert err is not None
-    assert (
-        "writable REST catalog tables cannot use a server with catalog_name set"
-        in str(err)
-    )
+    assert "cannot change catalog_name of a writable REST catalog table" in str(err)
     pg_conn.rollback()
 
     # Clean up so we do not leak the schema to a later test in the same group.

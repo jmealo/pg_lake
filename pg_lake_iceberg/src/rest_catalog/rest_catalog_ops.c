@@ -2349,14 +2349,15 @@ GetRestCatalogName(Oid relationId)
 	Assert(catalogType == REST_CATALOG_READ_ONLY ||
 		   catalogType == REST_CATALOG_READ_WRITE);
 
-	if (catalogType == REST_CATALOG_READ_WRITE)
-		return get_database_name(MyDatabaseId);
-
 	ForeignTable *foreignTable = GetForeignTable(relationId);
 	char	   *catalogName = GetStringOption(foreignTable->options, "catalog_name", false);
 
 	if (catalogName != NULL)
 		return catalogName;
+
+	/* writable tables created without a server catalog_name */
+	if (catalogType == REST_CATALOG_READ_WRITE)
+		return get_database_name(MyDatabaseId);
 
 	elog(ERROR, "catalog_name missing on read-only REST catalog table %u", relationId);
 }
