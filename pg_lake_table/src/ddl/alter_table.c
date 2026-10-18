@@ -263,7 +263,27 @@ ProcessAlterTable(ProcessUtilityParams * processUtilityParams, void *arg)
 	{
 		IcebergCatalogType icebergCatalogType = GetIcebergCatalogType(relationId);
 
-		if (icebergCatalogType == REST_CATALOG_READ_ONLY)
+		if (icebergCatalogType == REST_CATALOG_READ_WRITE)
+		{
+			ListCell   *cmdCell = NULL;
+
+			foreach(cmdCell, alterStmt->cmds)
+			{
+				AlterTableCmd *cmd = (AlterTableCmd *) lfirst(cmdCell);
+				ListCell   *defCell = NULL;
+
+				foreach(defCell, (List *) cmd->def)
+				{
+					DefElem    *def = (DefElem *) lfirst(defCell);
+
+					if (strcmp(def->defname, "catalog_name") == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("cannot change catalog_name of a writable REST catalog table")));
+				}
+			}
+		}
+		else if (icebergCatalogType == REST_CATALOG_READ_ONLY)
 		{
 			/*
 			 * We currently only allow changing catalog_table_name option for

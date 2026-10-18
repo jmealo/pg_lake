@@ -950,11 +950,16 @@ ProcessCreateIcebergTableFromForeignTableStmt(ProcessUtilityParams * params)
 				RestCatalogOptions *opts =
 					ResolveRestCatalogOptions(catalogOptionValue);
 
+				/*
+				 * A server's catalog_name names the catalog (prefix) the
+				 * table is created in.  Store it on the table so that the
+				 * table keeps its catalog even if the server changes.
+				 */
 				if (opts->catalogName != NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("writable REST catalog tables cannot use a server "
-									"with catalog_name set")));
+					createStmt->options =
+						lappend(createStmt->options,
+								makeDefElem("catalog_name",
+											(Node *) makeString(pstrdup(opts->catalogName)), -1));
 			}
 		}
 		else if (createStmt->base.tableElts == NIL && hasExternalCatalogReadOnlyOption)
@@ -1175,7 +1180,10 @@ ProcessCreateIcebergTableFromForeignTableStmt(ProcessUtilityParams * params)
 		RestCatalogOptions *opts =
 			ResolveRestCatalogOptions(catalogOptionValue);
 
-		RegisterNamespaceToRestCatalog(opts, get_database_name(MyDatabaseId),
+		char	   *restCatalogName = GetStringOption(createStmt->options, "catalog_name", false);
+
+		RegisterNamespaceToRestCatalog(opts,
+									   restCatalogName ? restCatalogName : get_database_name(MyDatabaseId),
 									   get_namespace_name(namespaceId));
 	}
 

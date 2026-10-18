@@ -999,7 +999,11 @@ pg_lake_iceberg_validator(PG_FUNCTION_ARGS)
 			/*
 			 * For other catalog types these options are not valid.
 			 */
-			if (catalogName)
+			/*
+			 * Writable REST catalog tables carry catalog_name when their
+			 * server sets it; create_table.c adds it.
+			 */
+			if (catalogName && icebergCatalogType != REST_CATALOG_READ_WRITE)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("\"catalog_name\" option is only valid for read-only rest and object_store catalog tables")));
